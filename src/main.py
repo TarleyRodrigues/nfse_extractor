@@ -1,13 +1,14 @@
 """
 Módulo Principal (Ponto de Entrada) - Refatorado para Layouts Dinâmicos
 """
-import os
-from typing import List, Dict, Any
 
-from . import config
-from . import pdf_processor
-from . import data_parser
 from . import excel_writer
+from . import data_parser
+from . import pdf_processor
+from . import config
+from typing import List, Dict, Any
+import os
+print("--- SCRIPT main.py EXECUTANDO ---")
 
 
 def main() -> None:
@@ -16,13 +17,16 @@ def main() -> None:
 
     # 1. Carregar o layout desejado
     try:
-        # Por enquanto, o nome do layout está fixo, mas poderia vir de um argumento
-        # de linha de comando ou de uma interface gráfica no futuro.
         layout_name = "prefeitura_sp"
         print(f"Carregando layout: '{layout_name}'")
         layout_map = config.load_layout(layout_name)
-    except Exception:
-        # Se load_layout falhar, ele já imprime o erro. Apenas encerramos.
+    except Exception as e:
+        # --- MUDANÇA IMPORTANTE ---
+        # Imprime o erro detalhado antes de encerrar.
+        print(f"ERRO CRÍTICO ao carregar o layout: {e}")
+        # Adiciona o traceback para vermos a origem do erro
+        import traceback
+        traceback.print_exc()
         return
 
     pdf_files = [f for f in os.listdir(
