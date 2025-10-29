@@ -1,35 +1,35 @@
 {
     "numero_nf": {
         "page": 0,
-        "coords": [470, 58, 560, 72]
+        "coords": [1277, 142, 1441, 172]
     },
     "data_emissao": {
         "page": 0,
-        "coords": [470, 80, 560, 92]
+        "coords": [1221, 204, 1370, 231]
     },
     "cnpj_prestador": {
         "page": 0,
-        "coords": [20, 180, 170, 200]
+        "coords": [298, 336, 499, 362]
     },
     "nome_prestador": {
         "page": 0,
-        "coords": [20, 160, 400, 180]
+        "coords": [376, 367, 1473, 398]
     },
     "cnpj_tomador": {
         "page": 0,
-        "coords": [20, 280, 170, 300]
+        "coords": [289, 551, 530, 576]
     },
     "nome_tomador": {
         "page": 0,
-        "coords": [20, 260, 400, 280]
+        "coords": [371, 524, 987, 551]
     },
     "valor_servico": {
         "page": 0,
-        "coords": [450, 615, 565, 630]
+        "coords": [1005, 1354, 1101, 1387]
     },
     "discriminacao": {
         "page": 0,
-        "coords": [20, 400, 570, 550]
+        "coords": [159, 749, 1484, 1333]
     }
 }```
 *Observação: JSON não usa tuplas `()`, então convertemos as coordenadas para listas `[]`.*
