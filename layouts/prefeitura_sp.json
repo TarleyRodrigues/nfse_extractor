@@ -2,5 +2,33 @@
     "numero_nf": {
         "page": 0,
         "coords": [513.49, 67.16, 518.5, 76.16]
+    },
+    "data_emissao": {
+        "page": 0,
+        "coords": [399.8, 144.73, 452.35, 155.23]
+    },
+    "cnpj_prestador": {
+        "page": 0,
+        "coords": [193.73, 178.59, 260.88, 186.09]
+    },
+    "nome_prestador": {
+        "page": 0,
+        "coords": [53.25, 128.82, 160.7, 138.57] 
+    },
+    "cnpj_tomador": {
+        "page": 0,
+        "coords": [104.51, 296.23, 178.07, 306.73]
+    },
+    "nome_tomador": {
+        "page": 0,
+        "coords": [104.51, 309.73, 244.74, 320.23]
+    },
+    "valor_servico": {
+        "page": 0,
+        "coords": [524.44, 638.82, 567.27, 648.57]
+    },
+    "discriminacao": {
+        "page": 0,
+        "coords": [33.0, 448.75, 555.63, 466.0]
     }
 }
