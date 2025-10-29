@@ -1,0 +1,14 @@
+# Extração de PDF e Processamento de Imagem (OCR)
+pdfplumber
+pytesseract
+opencv-python
+
+# Manipulação e Análise de Dados
+pandas
+
+# Escrita em arquivos Excel
+openpyxl
+
+# Biblioteca de suporte para o Pytesseract no Windows (opcional mas recomendado)
+# pillow
+# (Nota: Pillow geralmente é instalado como dependência do pdfplumber ou outros)
