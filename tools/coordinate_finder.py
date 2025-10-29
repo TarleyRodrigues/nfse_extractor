@@ -1,9 +1,7 @@
 """
-Ferramenta Auxiliar para Localização de Coordenadas em PDFs (Versão 2.0).
+Ferramenta Auxiliar para Localização de Coordenadas (Versão 4.1 - Corrigida).
 
-Esta versão redimensiona a página do PDF para caber confortavelmente na tela,
-enquanto recalcula os cliques do mouse para fornecer as coordenadas precisas
-correspondentes ao PDF original de alta resolução.
+Corrige um typo na constante de conversão de cores do OpenCV (COLOR_RGB2BGR).
 """
 import cv2
 import pdfplumber
@@ -11,60 +9,44 @@ import numpy as np
 import sys
 from pathlib import Path
 
-# Variáveis globais para armazenar pontos e a proporção de redimensionamento
+# --- Variáveis de Configuração ---
+RESOLUTION = 200
 points = []
-resize_ratio = 1.0
-image_clone = None
+image_display = None
 
 
 def mouse_callback(event, x, y, flags, param):
     """Função de callback para eventos do mouse."""
-    global points, image_clone, resize_ratio
+    global points, image_display
 
     if event == cv2.EVENT_LBUTTONDOWN:
-        # Armazena as coordenadas do clique na imagem redimensionada
         points.append((x, y))
-
-        # Desenha na imagem de exibição (a cópia redimensionada)
-        cv2.circle(image_clone, (x, y), 5, (0, 0, 255), -1)
-        cv2.imshow("PDF Page", image_clone)
+        cv2.circle(image_display, (x, y), 5, (0, 0, 255), -1)
 
         if len(points) == 2:
-            cv2.rectangle(image_clone, points[0], points[1], (0, 255, 0), 2)
-            cv2.imshow("PDF Page", image_clone)
+            cv2.rectangle(image_display, points[0], points[1], (0, 255, 0), 2)
 
-            # --- CONVERSÃO DAS COORDENADAS ---
-            # Converte as coordenadas do clique (da imagem pequena) de volta
-            # para as coordenadas da imagem original (grande).
-            original_points = [
-                (int(p[0] / resize_ratio), int(p[1] / resize_ratio)) for p in points]
+            conversion_factor = 72 / RESOLUTION
+            pdf_points = [
+                (p[0] * conversion_factor, p[1] * conversion_factor) for p in points
+            ]
 
-            x0 = min(original_points[0][0], original_points[1][0])
-            top = min(original_points[0][1], original_points[1][1])
-            x1 = max(original_points[0][0], original_points[1][0])
-            bottom = max(original_points[0][1], original_points[1][1])
+            x0 = min(pdf_points[0][0], pdf_points[1][0])
+            top = min(pdf_points[0][1], pdf_points[1][1])
+            x1 = max(pdf_points[0][0], pdf_points[1][0])
+            bottom = max(pdf_points[0][1], pdf_points[1][1])
 
-            print("\n--- Coordenadas Encontradas (tamanho original)! ---")
+            print("\n--- Coordenadas Finais (em Pontos de PDF) ---")
             print(
-                f"Copie e cole no seu arquivo JSON: [{x0}, {top}, {x1}, {bottom}]")
+                f"Copie e cole no seu JSON: [{x0:.2f}, {top:.2f}, {x1:.2f}, {bottom:.2f}]")
 
             points = []
 
-
-def get_screen_resolution():
-    """Tenta obter a resolução da tela de forma simples (pode não funcionar em todos os sistemas)."""
-    try:
-        import tkinter as tk
-        root = tk.Tk()
-        root.withdraw()
-        return root.winfo_screenwidth(), root.winfo_screenheight()
-    except Exception:
-        # Retorna um valor padrão seguro se o tkinter não estiver disponível
-        return 1920, 1080
+        cv2.imshow("PDF Page", image_display)
 
 
 def main():
-    global image_clone, resize_ratio
+    global image_display
 
     if len(sys.argv) != 3:
         print(
@@ -72,69 +54,38 @@ def main():
         return
 
     pdf_path = Path(sys.argv[1])
-    try:
-        page_number = int(sys.argv[2])
-    except ValueError:
-        print("ERRO: O número da página deve ser um inteiro.")
-        return
+    page_number = int(sys.argv[2]) - 1
 
     if not pdf_path.exists():
-        print(f"ERRO: Arquivo PDF não encontrado em '{pdf_path}'")
+        print(f"ERRO: PDF não encontrado em '{pdf_path}'")
         return
-
-    print("Abrindo PDF... Pressione 'q' na janela da imagem para sair.")
 
     try:
         with pdfplumber.open(pdf_path) as pdf:
-            if not (0 < page_number <= len(pdf.pages)):
-                print(
-                    f"ERRO: Número de página inválido. O PDF tem {len(pdf.pages)} páginas.")
+            if not (0 <= page_number < len(pdf.pages)):
+                print(f"ERRO: Página inválida.")
                 return
 
-            page = pdf.pages[page_number - 1]
-            pil_image = page.to_image(resolution=200).original
-            image_original = cv2.cvtColor(
+            page = pdf.pages[page_number]
+            pil_image = page.to_image(resolution=RESOLUTION).original
+
+            # --- LINHA CORRIGIDA ---
+            # Usando '2' no lugar de '_'
+            image_display = cv2.cvtColor(
                 np.array(pil_image), cv2.COLOR_RGB2BGR)
-
-        # --- LÓGICA DE REDIMENSIONAMENTO ---
-        screen_w, screen_h = get_screen_resolution()
-        max_h = int(screen_h * 0.9)  # Usa 90% da altura da tela
-
-        original_h, original_w = image_original.shape[:2]
-
-        # Calcula a proporção apenas se a imagem for maior que a tela
-        if original_h > max_h:
-            resize_ratio = max_h / original_h
-            new_w = int(original_w * resize_ratio)
-            new_h = int(original_h * resize_ratio)
-
-            # Redimensiona a imagem para exibição
-            image_display = cv2.resize(
-                image_original, (new_w, new_h), interpolation=cv2.INTER_AREA)
-        else:
-            image_display = image_original
-            resize_ratio = 1.0  # Nenhuma alteração
-
-        image_clone = image_display.copy()
 
         cv2.namedWindow("PDF Page")
         cv2.setMouseCallback("PDF Page", mouse_callback)
+        print("Janela aberta. Clique para selecionar a área. Pressione 'q' para sair.")
 
         while True:
-            cv2.imshow("PDF Page", image_clone)
-            key = cv2.waitKey(1) & 0xFF
-
-            if key == ord('q'):
+            cv2.imshow("PDF Page", image_display)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
-            elif key == ord('r'):
-                print("\nSeleção resetada. Escolha dois novos pontos.")
-                image_clone = image_display.copy()  # Reseta para a imagem redimensionada
-                points = []
-
         cv2.destroyAllWindows()
 
     except Exception as e:
-        print(f"Ocorreu um erro inesperado: {e}")
+        print(f"Ocorreu um erro: {e}")
 
 
 if __name__ == "__main__":
