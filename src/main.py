@@ -20,6 +20,7 @@ def main() -> None:
         layout_name = "prefeitura_sp"
         print(f"Carregando layout: '{layout_name}'")
         layout_map = config.load_layout(layout_name)
+        print(f"DEBUG: Layout carregado com sucesso: {layout_map}")
     except Exception as e:
         # --- MUDANÇA IMPORTANTE ---
         # Imprime o erro detalhado antes de encerrar.
