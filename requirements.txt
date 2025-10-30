@@ -12,3 +12,6 @@ openpyxl
 # Biblioteca de suporte para o Pytesseract no Windows (opcional mas recomendado)
 # pillow
 # (Nota: Pillow geralmente é instalado como dependência do pdfplumber ou outros)
+
+# Interface Gráfica
+PySide6
