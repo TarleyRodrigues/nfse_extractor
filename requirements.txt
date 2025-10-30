@@ -15,3 +15,7 @@ openpyxl
 
 # Interface Gráfica
 PySide6
+
+# ... (bibliotecas existentes) ...
+Flask
+requests
