@@ -7,15 +7,16 @@ Model (lógica de negócios de extração).
 """
 import sys
 from PySide6.QtWidgets import QApplication, QMainWindow, QFileDialog
-from PySide6.QtCore import QFile
+from PySide6.QtCore import QFile, QThread, Signal
 from PySide6.QtUiTools import QUiLoader
+from src import config, pdf_processor, data_parser, excel_writer
+import os
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super(MainWindow, self).__init__()
 
-        # Carrega a interface do arquivo .ui
         ui_file_path = "src/gui/ui/main_window.ui"
         ui_file = QFile(ui_file_path)
         ui_file.open(QFile.ReadOnly)
@@ -24,28 +25,159 @@ class MainWindow(QMainWindow):
         self.window = loader.load(ui_file)
         ui_file.close()
 
-        # Conecta os sinais aos slots (eventos -> funções)
-        self.window.btn_select_pdfs.clicked.connect(self.select_pdfs)
+        self.pdf_files = []  # Armazena os caminhos dos PDFs selecionados
 
-        # Exibe a janela
+        # Conecta os sinais aos slots
+        self.window.btn_select_pdfs.clicked.connect(self.select_pdfs)
+        self.window.btn_process_files.clicked.connect(self.process_files)
+
+        self.populate_layouts_combobox()
+        self.update_ui_state()
+
         self.window.show()
 
-    def select_pdfs(self):
-        """
-        Abre uma caixa de diálogo para o usuário selecionar múltiplos arquivos PDF.
-        """
-        file_paths, _ = QFileDialog.getOpenFileNames(
-            self,
-            "Selecionar arquivos PDF",
-            "",  # Diretório inicial
-            "Arquivos PDF (*.pdf)"
-        )
+    def populate_layouts_combobox(self):
+        """Busca por arquivos .json na pasta de layouts e os adiciona ao ComboBox."""
+        try:
+            layouts = [f.replace('.json', '') for f in os.listdir(
+                config.LAYOUTS_DIR) if f.endswith('.json')]
+            self.window.combo_box_layouts.addItems(layouts)
+        except FileNotFoundError:
+            self.window.label_status.setText(
+                "Erro: Pasta de layouts não encontrada.")
 
+    def select_pdfs(self):
+        """Abre uma caixa de diálogo para selecionar múltiplos arquivos PDF."""
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self, "Selecionar arquivos PDF", "", "Arquivos PDF (*.pdf)")
         if file_paths:
-            # Limpa a lista atual e adiciona os novos arquivos selecionados
+            self.pdf_files = file_paths
             self.window.list_widget_files.clear()
-            self.window.list_widget_files.addItems(file_paths)
-            print(f"Arquivos selecionados: {file_paths}")
+            self.window.list_widget_files.addItems(
+                [os.path.basename(p) for p in self.pdf_files])
+            self.window.label_status.setText(
+                f"{len(self.pdf_files)} arquivo(s) selecionado(s).")
+        self.update_ui_state()
+
+    def process_files(self):
+        """Inicia o processo de extração na worker thread."""
+        if not self.pdf_files:
+            self.window.label_status.setText("Nenhum PDF selecionado.")
+            return
+
+        layout_name = self.window.combo_box_layouts.currentText()
+        if not layout_name:
+            self.window.label_status.setText("Nenhum layout selecionado.")
+            return
+
+        try:
+            layout_map = config.load_layout(layout_name)
+        except Exception as e:
+            self.window.label_status.setText(f"Erro ao carregar layout: {e}")
+            return
+
+        output_filename = "relatorio_nfse.xlsx"  # Pode ser customizável no futuro
+
+        self.update_ui_state(processing=True)
+
+        # Cria e inicia a worker thread
+        self.worker = Worker(self.pdf_files, layout_map, output_filename)
+        self.worker.progress.connect(self.window.progress_bar.setValue)
+        self.worker.status_changed.connect(self.window.label_status.setText)
+        self.worker.finished.connect(self.on_processing_finished)
+        self.worker.error.connect(self.on_processing_error)
+        self.worker.start()
+
+    def on_processing_finished(self, message):
+        """Chamado quando o worker termina com sucesso."""
+        self.window.label_status.setText(message)
+        self.update_ui_state(processing=False)
+
+    def on_processing_error(self, message):
+        """Chamado quando o worker encontra um erro."""
+        self.window.label_status.setText(f"ERRO: {message}")
+        self.update_ui_state(processing=False)
+
+    def update_ui_state(self, processing=False):
+        """Habilita/desabilita os widgets com base no estado da aplicação."""
+        self.window.btn_select_pdfs.setEnabled(not processing)
+
+        # --- LINHA CORRIGIDA ---
+        # Converte explicitamente a verificação da lista para um booleano (True/False)
+        enable_process_button = not processing and bool(self.pdf_files)
+        self.window.btn_process_files.setEnabled(enable_process_button)
+
+        self.window.combo_box_layouts.setEnabled(not processing)
+
+        if not processing:
+            self.window.progress_bar.setValue(0)
+
+# --- Classe Worker para Processamento em Segundo Plano ---
+
+
+class Worker(QThread):
+    """
+    Worker thread para executar o processo de extração de PDF sem congelar a GUI.
+    """
+    # Sinais que serão emitidos pelo worker
+    # Para atualizar a barra de progresso (0-100)
+    progress = Signal(int)
+    # Para enviar mensagens de status para a GUI
+    status_changed = Signal(str)
+    # Para sinalizar o término (com mensagem final)
+    finished = Signal(str)
+    error = Signal(str)                # Para sinalizar um erro crítico
+
+    def __init__(self, pdf_paths, layout_map, output_filename):
+        super().__init__()
+        self.pdf_paths = pdf_paths
+        self.layout_map = layout_map
+        self.output_filename = output_filename
+
+    def run(self):
+        """
+        Este método é executado quando a thread inicia. Contém a lógica de extração.
+        """
+        try:
+            total_files = len(self.pdf_paths)
+            all_nfse_data = []
+
+            for i, pdf_path in enumerate(self.pdf_paths):
+                filename = os.path.basename(pdf_path)
+                self.status_changed.emit(f"Processando: {filename}...")
+
+                raw_data = pdf_processor.extract_data_from_pdf(
+                    pdf_path, self.layout_map)
+                if not raw_data:
+                    continue  # Pula arquivos que falharam na extração
+
+                clean_data = {"arquivo_origem": filename}
+                for field, raw_value in raw_data.items():
+                    parser_function = getattr(
+                        data_parser, f"parse_{field}", data_parser.clean_text)
+                    clean_data[field] = parser_function(raw_value)
+
+                all_nfse_data.append(clean_data)
+
+                # Calcula e emite o progresso
+                progress_percentage = int(((i + 1) / total_files) * 100)
+                self.progress.emit(progress_percentage)
+
+            if not all_nfse_data:
+                self.error.emit(
+                    "Nenhum dado pôde ser extraído dos arquivos selecionados.")
+                return
+
+            self.status_changed.emit("Gerando relatório Excel...")
+            excel_writer.generate_excel_report(
+                all_nfse_data, filename=self.output_filename)
+
+            output_path = config.OUTPUT_DIR / self.output_filename
+            self.finished.emit(
+                f"Processo concluído! Relatório salvo em:\n{output_path}")
+
+        except Exception as e:
+            self.error.emit(f"Ocorreu um erro: {str(e)}")
 
 
 if __name__ == '__main__':
