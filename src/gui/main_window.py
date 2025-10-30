@@ -26,10 +26,12 @@ class MainWindow(QMainWindow):
         ui_file.close()
 
         self.pdf_files = []  # Armazena os caminhos dos PDFs selecionados
+        self.output_file_path = ""  # <-- 1. Adicionar nova variável de instância
 
         # Conecta os sinais aos slots
         self.window.btn_select_pdfs.clicked.connect(self.select_pdfs)
         self.window.btn_process_files.clicked.connect(self.process_files)
+        self.window.btn_select_output.clicked.connect(self.select_output_file)
 
         self.populate_layouts_combobox()
         self.update_ui_state()
@@ -59,10 +61,31 @@ class MainWindow(QMainWindow):
                 f"{len(self.pdf_files)} arquivo(s) selecionado(s).")
         self.update_ui_state()
 
+    def select_output_file(self):
+        """Abre um diálogo para o usuário escolher o local e nome do arquivo de saída."""
+        # Sugere um nome de arquivo e diretório inicial
+        default_path = os.path.join(config.OUTPUT_DIR, "relatorio_nfse.xlsx")
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Salvar Relatório Como...",
+            default_path,
+            "Arquivos Excel (*.xlsx)"
+        )
+
+        if file_path:
+            self.output_file_path = file_path
+            # Mostra o caminho escolhido na caixa de texto
+            self.window.line_edit_output_path.setText(self.output_file_path)
+            self.window.label_status.setText(
+                f"Relatório será salvo em: {os.path.basename(file_path)}")
+        self.update_ui_state()
+
     def process_files(self):
         """Inicia o processo de extração na worker thread."""
-        if not self.pdf_files:
-            self.window.label_status.setText("Nenhum PDF selecionado.")
+        if not self.pdf_files or not self.output_file_path:  # <-- Adicionar validação do caminho de saída
+            self.window.label_status.setText(
+                "Selecione os PDFs e o local de saída.")
             return
 
         layout_name = self.window.combo_box_layouts.currentText()
@@ -76,12 +99,10 @@ class MainWindow(QMainWindow):
             self.window.label_status.setText(f"Erro ao carregar layout: {e}")
             return
 
-        output_filename = "relatorio_nfse.xlsx"  # Pode ser customizável no futuro
-
         self.update_ui_state(processing=True)
 
         # Cria e inicia a worker thread
-        self.worker = Worker(self.pdf_files, layout_map, output_filename)
+        self.worker = Worker(self.pdf_files, layout_map, self.output_file_path)
         self.worker.progress.connect(self.window.progress_bar.setValue)
         self.worker.status_changed.connect(self.window.label_status.setText)
         self.worker.finished.connect(self.on_processing_finished)
@@ -102,9 +123,8 @@ class MainWindow(QMainWindow):
         """Habilita/desabilita os widgets com base no estado da aplicação."""
         self.window.btn_select_pdfs.setEnabled(not processing)
 
-        # --- LINHA CORRIGIDA ---
-        # Converte explicitamente a verificação da lista para um booleano (True/False)
-        enable_process_button = not processing and bool(self.pdf_files)
+        enable_process_button = not processing and bool(
+            self.pdf_files) and bool(self.output_file_path)
         self.window.btn_process_files.setEnabled(enable_process_button)
 
         self.window.combo_box_layouts.setEnabled(not processing)
@@ -128,11 +148,11 @@ class Worker(QThread):
     finished = Signal(str)
     error = Signal(str)                # Para sinalizar um erro crítico
 
-    def __init__(self, pdf_paths, layout_map, output_filename):
+    def __init__(self, pdf_paths, layout_map, output_path):
         super().__init__()
         self.pdf_paths = pdf_paths
         self.layout_map = layout_map
-        self.output_filename = output_filename
+        self.output_path = output_path  # Armazena o caminho completo
 
     def run(self):
         """
@@ -170,11 +190,10 @@ class Worker(QThread):
 
             self.status_changed.emit("Gerando relatório Excel...")
             excel_writer.generate_excel_report(
-                all_nfse_data, filename=self.output_filename)
+                all_nfse_data, output_path=self.output_path)
 
-            output_path = config.OUTPUT_DIR / self.output_filename
             self.finished.emit(
-                f"Processo concluído! Relatório salvo em:\n{output_path}")
+                f"Processo concluído! Relatório salvo em:\n{self.output_path}")
 
         except Exception as e:
             self.error.emit(f"Ocorreu um erro: {str(e)}")
