@@ -60,7 +60,7 @@
      <item>
       <widget class="QTableWidget" name="table_widget_fields">
        <property name="columnCount">
-        <number>4</number>
+        <number>2</number>
        </property>
        <attribute name="horizontalHeaderVisible">
         <bool>true</bool>
@@ -78,12 +78,10 @@
          <string>Coordenadas</string>
         </property>
        </column>
-       <column/>
-       <column/>
       </widget>
      </item>
      <item>
-      <widget class="QGraphicsView" name="graphics_view_pdf"/>
+      <widget class="PdfViewer" name="graphics_view_pdf"/>
      </item>
     </layout>
    </widget>
@@ -100,6 +98,13 @@
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>PdfViewer</class>
+   <extends>QGraphicsView</extends>
+   <header>src.gui.layout_builder_window</header>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

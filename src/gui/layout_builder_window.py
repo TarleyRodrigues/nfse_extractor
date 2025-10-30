@@ -4,9 +4,10 @@ Controller para a Janela do Criador de Layouts (Layout Builder).
 import json
 import os
 import traceback
-from PySide6.QtWidgets import (QMainWindow, QFileDialog, QGraphicsScene,
-                               QTableWidgetItem, QInputDialog, QMessageBox)
-from PySide6.QtCore import QFile, Qt, QRectF
+from PySide6.QtWidgets import (QMainWindow, QFileDialog, QGraphicsScene, QGraphicsRectItem,
+                               QTableWidgetItem, QInputDialog, QMessageBox, QGraphicsView)
+# --- LINHA CORRIGIDA ---
+from PySide6.QtCore import QFile, Qt, QRectF, Signal
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtGui import QPixmap, QPen, QImage
 import pdfplumber
@@ -14,43 +15,94 @@ import pdfplumber
 from src import config
 
 
+class PdfViewer(QGraphicsView):
+    """
+    Uma QGraphicsView customizada para exibir o PDF e lidar com a seleção
+    de retângulos com o mouse.
+    """
+    # Sinal que emitirá as coordenadas do retângulo selecionado
+    rect_selected = Signal(QRectF)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setScene(QGraphicsScene(self))
+        self.start_pos = None
+        self.current_rect_item = None
+        # Habilita a rolagem com o botão do meio do mouse
+        self.setDragMode(QGraphicsView.ScrollHandDrag)
+
+    def set_pixmap(self, pixmap):
+        """Define a imagem do PDF a ser exibida."""
+        self.scene().clear()
+        self.scene().addPixmap(pixmap)
+        # Reseta a visualização para mostrar a imagem inteira com zoom
+        self.fitInView(self.scene().itemsBoundingRect(), Qt.KeepAspectRatio)
+
+    def mousePressEvent(self, event):
+        """Inicia o desenho do retângulo com o botão esquerdo."""
+        if event.button() == Qt.LeftButton:
+            self.start_pos = self.mapToScene(event.pos())
+            # Desativa o modo de rolagem para permitir o desenho
+            self.setDragMode(QGraphicsView.NoDrag)
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        """Atualiza o retângulo de seleção enquanto o mouse é movido."""
+        if self.start_pos:
+            end_pos = self.mapToScene(event.pos())
+            rect = QRectF(self.start_pos, end_pos).normalized()
+
+            if self.current_rect_item:
+                self.scene().removeItem(self.current_rect_item)
+
+            pen = QPen(Qt.red, 2, Qt.SolidLine)
+            self.current_rect_item = self.scene().addRect(rect, pen)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        """Finaliza o desenho, emite o sinal e limpa."""
+        if event.button() == Qt.LeftButton and self.current_rect_item:
+            self.rect_selected.emit(self.current_rect_item.rect())
+            self.scene().removeItem(self.current_rect_item)
+            self.current_rect_item = None
+            self.start_pos = None
+            # Reativa o modo de rolagem
+            self.setDragMode(QGraphicsView.ScrollHandDrag)
+        super().mouseReleaseEvent(event)
+
+
 class LayoutBuilderWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        # Carrega a interface do arquivo .ui
+        # --- LÓGICA DE CARREGAMENTO CORRIGIDA ---
         ui_file_path = "src/gui/ui/layout_builder_window.ui"
         ui_file = QFile(ui_file_path)
         ui_file.open(QFile.ReadOnly)
+
+        # Cria um loader e registra nossa classe customizada nele
         loader = QUiLoader()
-        self.window = loader.load(ui_file)
+        loader.registerCustomWidget(PdfViewer)  # <-- PASSO CRUCIAL
+
+        self.window = loader.load(ui_file, self)
+        ui_file.close()
 
         self.pdf_page = None
-        self.pixmap_item = None  # Referência ao item de imagem na cena
-        self.scene = QGraphicsScene()
-        self.window.graphics_view_pdf.setScene(self.scene)
-        # Dicionário para armazenar {'nome_campo': [coords]}
         self.mapped_fields = {}
-
-        # Variáveis para desenho do retângulo
-        self.start_pos = None
-        self.current_rect_item = None
 
         # Conecta os sinais aos slots
         self.window.btn_load_pdf.clicked.connect(self.load_pdf)
         self.window.btn_save_layout.clicked.connect(self.save_layout)
         self.window.btn_clear_selection.clicked.connect(self.clear_all_fields)
 
-        # Sobrescreve os eventos do mouse do QGraphicsView
-        self.window.graphics_view_pdf.mousePressEvent = self.mouse_press
-        self.window.graphics_view_pdf.mouseMoveEvent = self.mouse_move
-        self.window.graphics_view_pdf.mouseReleaseEvent = self.mouse_release
+        # Conecta o sinal do nosso PdfViewer customizado
+        self.window.graphics_view_pdf.rect_selected.connect(
+            self.on_rect_selected)
 
         self.update_table()
         self.window.show()
 
     def load_pdf(self):
-        """Carrega um PDF de amostra e renderiza a primeira página."""
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Selecionar PDF de Amostra", "", "Arquivos PDF (*.pdf)")
         if not file_path:
@@ -59,91 +111,43 @@ class LayoutBuilderWindow(QMainWindow):
         try:
             with pdfplumber.open(file_path) as pdf:
                 self.pdf_page = pdf.pages[0]
-                pil_image = self.pdf_page.to_image(resolution=150).original
+                # Aumenta a resolução para melhor zoom
+                pil_image = self.pdf_page.to_image(resolution=200).original
 
-                # --- CONVERSÃO DE IMAGEM CORRIGIDA ---
-                # Garante que a imagem Pillow está em um formato compatível
                 if pil_image.mode != "RGBA":
                     pil_image = pil_image.convert("RGBA")
 
-                # Cria um objeto QImage a partir dos bytes da imagem Pillow
-                img_data = pil_image.tobytes("raw", "RGBA")
-                qimage = QImage(img_data, pil_image.width,
-                                pil_image.height, QImage.Format_RGBA8888)
-
-                # Cria o QPixmap a partir do QImage (o formato correto)
+                qimage = QImage(pil_image.tobytes(
+                    "raw", "RGBA"), pil_image.width, pil_image.height, QImage.Format_RGBA8888)
                 pixmap = QPixmap.fromImage(qimage)
-                # --- FIM DA CORREÇÃO ---
 
-                self.scene.clear()
-                self.pixmap_item = self.scene.addPixmap(
-                    pixmap)  # Adiciona e guarda a referência
-                self.window.graphics_view_pdf.fitInView(
-                    self.scene.itemsBoundingRect(), Qt.KeepAspectRatio)
+                self.window.graphics_view_pdf.set_pixmap(pixmap)
                 self.clear_all_fields()
-
         except Exception as e:
-            traceback.print_exc()  # Imprime o erro detalhado no console para depuração
+            traceback.print_exc()
             self.show_message_box(
                 "Erro", f"Não foi possível carregar o PDF:\n{e}", "critical")
 
-    def mouse_press(self, event):
-        """Captura o início do clique e arrastar."""
+    def on_rect_selected(self, rect):
+        """Chamado quando um retângulo é selecionado no PdfViewer."""
         if not self.pdf_page:
             return
-        self.start_pos = self.window.graphics_view_pdf.mapToScene(event.pos())
 
-    def mouse_move(self, event):
-        """Desenha o retângulo de seleção enquanto o mouse é arrastado."""
-        if not self.start_pos:
-            return
-
-        end_pos = self.window.graphics_view_pdf.mapToScene(event.pos())
-
-        # Cria um QRectF normalizado para garantir que a largura e altura sejam positivas
-        rect = QRectF(self.start_pos, end_pos).normalized()
-
-        if self.current_rect_item:
-            self.scene.removeItem(self.current_rect_item)
-
-        pen = QPen(Qt.red, 2, Qt.SolidLine)
-        self.current_rect_item = self.scene.addRect(rect, pen)
-
-    def mouse_release(self, event):
-        """Finaliza a seleção e pede o nome do campo."""
-        if not self.start_pos or not self.current_rect_item:
-            return
-
-        end_pos = self.window.graphics_view_pdf.mapToScene(event.pos())
-        rect = QRectF(self.start_pos, end_pos).normalized()
-
-        # Converte as coordenadas da imagem (pixels) para coordenadas do PDF (pontos)
-        conversion_factor = 72 / 150
-
-        x0 = rect.left() * conversion_factor
-        top = rect.top() * conversion_factor
-        x1 = rect.right() * conversion_factor
-        bottom = rect.bottom() * conversion_factor
-
-        coords = [round(c, 2) for c in [x0, top, x1, bottom]]
+        conversion_factor = 72 / 200  # Resolução aumentada para 200
+        coords = [
+            round(rect.left() * conversion_factor, 2),
+            round(rect.top() * conversion_factor, 2),
+            round(rect.right() * conversion_factor, 2),
+            round(rect.bottom() * conversion_factor, 2)
+        ]
 
         field_name, ok = QInputDialog.getText(
             self, "Nome do Campo", "Digite o nome para este campo:")
-
         if ok and field_name:
-            # Adiciona um novo retângulo permanente à cena para feedback visual
             perm_pen = QPen(Qt.green, 2, Qt.DashLine)
-            self.scene.addRect(rect, perm_pen)
-
+            self.window.graphics_view_pdf.scene().addRect(rect, perm_pen)
             self.mapped_fields[field_name] = coords
             self.update_table()
-
-        # Remove o retângulo de seleção vermelho temporário
-        if self.current_rect_item:
-            self.scene.removeItem(self.current_rect_item)
-            self.current_rect_item = None
-
-        self.start_pos = None
 
     def update_table(self):
         """Atualiza a tabela com os campos mapeados."""
@@ -157,12 +161,14 @@ class LayoutBuilderWindow(QMainWindow):
                 row_position, 1, QTableWidgetItem(str(coords)))
 
     def clear_all_fields(self):
-        """Limpa todos os campos mapeados e os retângulos da cena."""
         self.mapped_fields = {}
-        # Remove todos os itens da cena, exceto a imagem base do PDF
-        for item in self.scene.items():
-            if item != self.pixmap_item:
-                self.scene.removeItem(item)
+        # Limpa apenas os retângulos verdes, a imagem base é gerenciada por set_pixmap
+        scene = self.window.graphics_view_pdf.scene()
+        items_to_remove = [item for item in scene.items(
+            # Gambiarra para não remover a imagem base
+        ) if not isinstance(item, type(scene.items()[-1]))]
+        for item in items_to_remove:
+            scene.removeItem(item)
         self.update_table()
 
     def save_layout(self):
