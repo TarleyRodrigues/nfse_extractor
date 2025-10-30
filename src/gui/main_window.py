@@ -6,11 +6,12 @@ Responsável por carregar a interface do usuário (View), conectar os sinais
 Model (lógica de negócios de extração).
 """
 import sys
-from PySide6.QtWidgets import QApplication, QMainWindow, QFileDialog
+from PySide6.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox
 from PySide6.QtCore import QFile, QThread, Signal
 from PySide6.QtUiTools import QUiLoader
 from src import config, pdf_processor, data_parser, excel_writer
 import os
+import subprocess
 
 
 class MainWindow(QMainWindow):
@@ -24,6 +25,7 @@ class MainWindow(QMainWindow):
         loader = QUiLoader()
         self.window = loader.load(ui_file)
         ui_file.close()
+        self.window.setAcceptDrops(True)
 
         self.pdf_files = []  # Armazena os caminhos dos PDFs selecionados
         self.output_file_path = ""  # <-- 1. Adicionar nova variável de instância
@@ -32,6 +34,9 @@ class MainWindow(QMainWindow):
         self.window.btn_select_pdfs.clicked.connect(self.select_pdfs)
         self.window.btn_process_files.clicked.connect(self.process_files)
         self.window.btn_select_output.clicked.connect(self.select_output_file)
+        self.window.btn_open_folder.clicked.connect(self.open_report_folder)
+        self.window.dragEnterEvent = self.dragEnterEvent
+        self.window.dropEvent = self.dropEvent
 
         self.populate_layouts_combobox()
         self.update_ui_state()
@@ -111,17 +116,27 @@ class MainWindow(QMainWindow):
 
     def on_processing_finished(self, message):
         """Chamado quando o worker termina com sucesso."""
-        self.window.label_status.setText(message)
+        # --- LINHA ADICIONADA ---
+        # Atualiza a label de status com a mensagem final de sucesso.
+        self.window.label_status.setText("Processo concluído!")
+
         self.update_ui_state(processing=False)
+        self.window.btn_open_folder.setVisible(True)
+
+        # A caixa de diálogo mostra a mensagem detalhada com o caminho do arquivo
+        self.show_message_box("Sucesso", message, "info")
 
     def on_processing_error(self, message):
         """Chamado quando o worker encontra um erro."""
-        self.window.label_status.setText(f"ERRO: {message}")
         self.update_ui_state(processing=False)
+        self.show_message_box("Erro no Processamento",
+                              f"Ocorreu um erro:\n{message}", "critical")
 
     def update_ui_state(self, processing=False):
         """Habilita/desabilita os widgets com base no estado da aplicação."""
+        # ... (lógica de habilitação/desabilitação permanece a mesma) ...
         self.window.btn_select_pdfs.setEnabled(not processing)
+        self.window.btn_select_output.setEnabled(not processing)
 
         enable_process_button = not processing and bool(
             self.pdf_files) and bool(self.output_file_path)
@@ -131,6 +146,69 @@ class MainWindow(QMainWindow):
 
         if not processing:
             self.window.progress_bar.setValue(0)
+            # Esconde o botão "Abrir Pasta" no início ou após um erro
+            if "ERRO" in self.window.label_status.text() or not self.output_file_path:
+                self.window.btn_open_folder.setVisible(False)
+
+    def dragEnterEvent(self, event):
+        """Chamado quando um arquivo é arrastado sobre a janela."""
+        # Verifica se os dados arrastados contêm URLs de arquivos
+        if event.mimeData().hasUrls():
+            # Aceita o evento, mostrando ao usuário que pode "soltar"
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        """Chamado quando os arquivos são "soltados" na janela."""
+        urls = event.mimeData().urls()
+        # Filtra para manter apenas arquivos .pdf
+        pdf_paths = [url.toLocalFile() for url in urls if url.isLocalFile(
+        ) and url.toLocalFile().lower().endswith('.pdf')]
+
+        if pdf_paths:
+            # Adiciona os novos arquivos à lista existente
+            self.pdf_files.extend(pdf_paths)
+            # Remove duplicatas e ordena
+            self.pdf_files = sorted(list(set(self.pdf_files)))
+
+            self.window.list_widget_files.clear()
+            self.window.list_widget_files.addItems(
+                [os.path.basename(p) for p in self.pdf_files])
+            self.window.label_status.setText(
+                f"{len(self.pdf_files)} arquivo(s) selecionado(s).")
+            self.update_ui_state()
+
+    def open_report_folder(self):
+        """Abre a pasta onde o relatório foi salvo."""
+        if self.output_file_path:
+            folder_path = os.path.dirname(self.output_file_path)
+            # Usa um método multiplataforma para abrir o explorador de arquivos
+            try:
+                if sys.platform == "win32":
+                    os.startfile(folder_path)
+                elif sys.platform == "darwin":  # macOS
+                    subprocess.Popen(["open", folder_path])
+                else:  # linux
+                    subprocess.Popen(["xdg-open", folder_path])
+            except Exception as e:
+                self.show_message_box(
+                    "Erro", f"Não foi possível abrir a pasta:\n{e}", "critical")
+
+    def show_message_box(self, title, message, level="info"):
+        """Exibe uma caixa de diálogo de mensagem padronizada."""
+        msg_box = QMessageBox(self.window)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+
+        if level == "info":
+            msg_box.setIcon(QMessageBox.Information)
+        elif level == "warning":
+            msg_box.setIcon(QMessageBox.Warning)
+        elif level == "critical":
+            msg_box.setIcon(QMessageBox.Critical)
+        else:
+            msg_box.setIcon(QMessageBox.NoIcon)
+
+        msg_box.exec()
 
 # --- Classe Worker para Processamento em Segundo Plano ---
 

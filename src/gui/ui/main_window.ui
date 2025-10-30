@@ -36,6 +36,12 @@
       <height>192</height>
      </rect>
     </property>
+    <property name="acceptDrops">
+     <bool>true</bool>
+    </property>
+    <property name="dragDropMode">
+     <enum>QAbstractItemView::DragDropMode::InternalMove</enum>
+    </property>
    </widget>
    <widget class="QProgressBar" name="progress_bar">
     <property name="geometry">
@@ -123,6 +129,19 @@
       </widget>
      </item>
     </layout>
+   </widget>
+   <widget class="QPushButton" name="btn_open_folder">
+    <property name="geometry">
+     <rect>
+      <x>310</x>
+      <y>410</y>
+      <width>141</width>
+      <height>24</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Abrir Pasta do Relatório</string>
+    </property>
    </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
