@@ -28,8 +28,26 @@ class PdfViewer(QGraphicsView):
         self.setScene(QGraphicsScene(self))
         self.start_pos = None
         self.current_rect_item = None
-        # Habilita a rolagem com o botão do meio do mouse
         self.setDragMode(QGraphicsView.ScrollHandDrag)
+        # Permite que o QGraphicsView ancore a transformação no ponto do mouse
+        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+
+    def wheelEvent(self, event):
+        """
+        Captura o evento da roda do mouse para aplicar zoom in/out.
+        """
+        # Fator de zoom. Valores maiores = zoom mais rápido.
+        zoom_factor = 1.15
+
+        # Se a roda do mouse foi rolada para cima (delta > 0), aplica zoom in
+        if event.angleDelta().y() > 0:
+            self.scale(zoom_factor, zoom_factor)
+        # Se foi rolada para baixo, aplica zoom out
+        else:
+            self.scale(1 / zoom_factor, 1 / zoom_factor)
 
     def set_pixmap(self, pixmap):
         """Define a imagem do PDF a ser exibida."""

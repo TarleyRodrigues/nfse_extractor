@@ -1,11 +1,38 @@
 {
-    "Valor da nota": {
+    "Numero da Nota": {
         "page": 0,
         "coords": [
-            359.02,
-            486.72,
-            397.89,
-            503.37
+            510.7,
+            66.39,
+            521.46,
+            76.03
+        ]
+    },
+    "Nome do Prestador": {
+        "page": 0,
+        "coords": [
+            51.75,
+            127.28,
+            162.6,
+            137.58
+        ]
+    },
+    "CNPJ do Prestador": {
+        "page": 0,
+        "coords": [
+            192.09,
+            177.17,
+            264.07,
+            186.49
+        ]
+    },
+    "Local dos servicos": {
+        "page": 0,
+        "coords": [
+            32.33,
+            259.81,
+            104.38,
+            269.45
         ]
     }
 }
