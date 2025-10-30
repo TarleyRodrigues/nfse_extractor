@@ -5,13 +5,14 @@ Responsável por carregar a interface do usuário (View), conectar os sinais
 (eventos de clique) aos slots (funções de lógica) e interagir com o
 Model (lógica de negócios de extração).
 """
+import os
+import subprocess
 import sys
 from PySide6.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox
 from PySide6.QtCore import QFile, QThread, Signal
 from PySide6.QtUiTools import QUiLoader
 from src import config, pdf_processor, data_parser, excel_writer
-import os
-import subprocess
+from src.gui.layout_builder_window import LayoutBuilderWindow
 
 
 class MainWindow(QMainWindow):
@@ -26,6 +27,7 @@ class MainWindow(QMainWindow):
         self.window = loader.load(ui_file)
         ui_file.close()
         self.window.setAcceptDrops(True)
+        self.layout_builder_window = None  # Para manter uma referência à janela
 
         self.pdf_files = []  # Armazena os caminhos dos PDFs selecionados
         self.output_file_path = ""  # <-- 1. Adicionar nova variável de instância
@@ -37,11 +39,23 @@ class MainWindow(QMainWindow):
         self.window.btn_open_folder.clicked.connect(self.open_report_folder)
         self.window.dragEnterEvent = self.dragEnterEvent
         self.window.dropEvent = self.dropEvent
+        self.window.btn_layout_builder.clicked.connect(
+            self.open_layout_builder)
 
         self.populate_layouts_combobox()
         self.update_ui_state()
 
         self.window.show()
+
+    def open_layout_builder(self):
+        """Abre a janela do criador de layouts."""
+        # Se a janela já estiver aberta, não abre outra. Em vez disso, a traz para a frente.
+        if self.layout_builder_window is None or not self.layout_builder_window.window.isVisible():
+            self.layout_builder_window = LayoutBuilderWindow()
+            self.layout_builder_window.window.show()
+        else:
+            self.layout_builder_window.window.activateWindow()
+            self.layout_builder_window.window.raise_()
 
     def populate_layouts_combobox(self):
         """Busca por arquivos .json na pasta de layouts e os adiciona ao ComboBox."""
